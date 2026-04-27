@@ -82,15 +82,15 @@ def price(body: PriceReq, authorization: Optional[str] = Header(None)):
         )
 
         price_data = pyairbnb.get_price(
-            price_input["api_key"],
-            cookies,
-            price_input["impression_id"],
-            price_input["product_id"],
-            date.fromisoformat(body.check_in),
-            date.fromisoformat(body.check_out),
-            body.adults,
-            body.currency,
-            "",
+            room_id=str(room_id),
+            check_in=date.fromisoformat(body.check_in),
+            check_out=date.fromisoformat(body.check_out),
+            adults=body.adults,
+            currency=body.currency,
+            impresion_id=price_input.get("impression_id"),
+            api_key=price_input.get("api_key"),
+            cookies=cookies,
+            proxy_url="",
         )
 
         return {"ok": True, "data": price_data}
