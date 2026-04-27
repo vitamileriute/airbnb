@@ -3,7 +3,6 @@ from pydantic import BaseModel
 from typing import Optional
 import os
 import re
-from datetime import date
 import pyairbnb
 
 app = FastAPI()
@@ -30,11 +29,6 @@ def extract_id(url: Optional[str]):
     return match.group(1) if match else None
 
 
-def parse_date(value: str):
-    y, m, d = value.split("-")
-    return date(int(y), int(m), int(d))
-
-
 @app.get("/health")
 def health():
     return {"ok": True}
@@ -53,10 +47,14 @@ def details(body: PriceReq, authorization: Optional[str] = Header(None)):
         data = pyairbnb.get_details(
             room_id=str(room_id),
             currency=body.currency,
-            check_in=parse_date(body.check_in),
-            check_out=parse_date(body.check_out),
+            check_in=body.check_in,
+            check_out=body.check_out,
             adults=body.adults,
+            proxy_url="",
         )
+
+        if isinstance(data, tuple):
+            data = data[0]
 
         return {"ok": True, "data": data}
 
@@ -74,15 +72,32 @@ def price(body: PriceReq, authorization: Optional[str] = Header(None)):
         return {"ok": False, "error": "room_id or valid url required"}
 
     try:
-        data = pyairbnb.get_price(
+        details_data, price_input, cookies = pyairbnb.get_details(
             room_id=str(room_id),
             currency=body.currency,
-            check_in=parse_date(body.check_in),
-            check_out=parse_date(body.check_out),
+            check_in=body.check_in,
+            check_out=body.check_out,
             adults=body.adults,
+            proxy_url="",
         )
 
-        return {"ok": True, "data": data}
+        api_key = price_input["api_key"]
+        product_id = price_input["product_id"]
+        impression_id = price_input.get("impression_id", "")
+
+        price_data = pyairbnb.get_price(
+            product_id=product_id,
+            api_key=api_key,
+            cookies=cookies,
+            impression_id=impression_id,
+            currency=body.currency,
+            check_in=body.check_in,
+            check_out=body.check_out,
+            adults=body.adults,
+            proxy_url="",
+        )
+
+        return {"ok": True, "data": price_data}
 
     except Exception as e:
         return {"ok": False, "error": str(e)}
