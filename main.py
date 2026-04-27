@@ -93,11 +93,28 @@ def price(body: PriceReq, authorization: Optional[str] = Header(None)):
             proxy_url="",
         )
 
-        return {"ok": True, "data": price_data}
+        return {
+            "ok": True,
+            "data": price_data,
+            "debug": {
+                "room_id": str(room_id),
+                "price_input_keys": list(price_input.keys()),
+                "has_api_key": bool(price_input.get("api_key")),
+                "has_product_id": bool(price_input.get("product_id")),
+                "has_impression_id": bool(price_input.get("impression_id")),
+            },
+        }
 
-   except Exception as e:
+    except Exception as e:
         return {
             "ok": False,
             "error": str(e),
             "error_type": type(e).__name__,
+            "debug": {
+                "room_id": str(room_id),
+                "check_in": body.check_in,
+                "check_out": body.check_out,
+                "adults": body.adults,
+                "currency": body.currency,
+            },
         }
