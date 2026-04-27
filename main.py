@@ -97,7 +97,7 @@ def price(body: PriceReq, authorization: Optional[str] = Header(None)):
             currency=body.currency or "USD",
             api_key=None,
             cookies=None,
-            impression_id=None,
+            impresion_id=None,
             proxy_url="",
         )
 
