@@ -95,5 +95,9 @@ def price(body: PriceReq, authorization: Optional[str] = Header(None)):
 
         return {"ok": True, "data": price_data}
 
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
+   except Exception as e:
+        return {
+            "ok": False,
+            "error": str(e),
+            "error_type": type(e).__name__,
+        }
