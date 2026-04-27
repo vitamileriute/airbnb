@@ -1,20 +1,21 @@
 from fastapi import FastAPI, HTTPException, Header
 from pydantic import BaseModel
 from typing import Optional
+from datetime import date
 import os
 import re
 import pyairbnb
 
 app = FastAPI()
 
-TOKEN = os.getenv("SERVICE_TOKEN")  # optional shared secret
+TOKEN = os.getenv("SERVICE_TOKEN")
 
 
 class PriceReq(BaseModel):
     url: Optional[str] = None
     room_id: Optional[str] = None
-    check_in: str        # "YYYY-MM-DD"
-    check_out: str       # "YYYY-MM-DD"
+    check_in: str
+    check_out: str
     adults: int = 1
     currency: str = "USD"
 
@@ -44,19 +45,19 @@ def details(body: PriceReq, authorization: Optional[str] = Header(None)):
         return {"ok": False, "error": "room_id or valid url required"}
 
     try:
-        data = pyairbnb.get_details(
-            room_id=str(room_id),
-            currency=body.currency,
-            check_in=body.check_in,
-            check_out=body.check_out,
-            adults=body.adults,
-            proxy_url="",
+        room_url = f"https://www.airbnb.com/rooms/{room_id}"
+
+        details_data, price_input, cookies = pyairbnb.get_metadata_from_url(
+            room_url,
+            "en",
+            "",
         )
 
-        if isinstance(data, tuple):
-            data = data[0]
-
-        return {"ok": True, "data": data}
+        return {
+            "ok": True,
+            "data": details_data,
+            "price_input": price_input,
+        }
 
     except Exception as e:
         return {"ok": False, "error": str(e)}
@@ -72,28 +73,24 @@ def price(body: PriceReq, authorization: Optional[str] = Header(None)):
         return {"ok": False, "error": "room_id or valid url required"}
 
     try:
-        details_data, price_input, cookies = pyairbnb.get_details(
-            room_id=str(room_id),
-            currency=body.currency,
-            check_in=body.check_in,
-            check_out=body.check_out,
-            adults=body.adults,
-            proxy_url="",
+        room_url = f"https://www.airbnb.com/rooms/{room_id}"
+
+        details_data, price_input, cookies = pyairbnb.get_metadata_from_url(
+            room_url,
+            "en",
+            "",
         )
 
-        api_key = price_input["api_key"]
-        product_id = price_input["product_id"]
-        impression_id = price_input.get("impression_id", "")
-
         price_data = pyairbnb.get_price(
-            product_id=product_id,
-            api_key=api_key,
-            cookies=cookies,
-            impression_id=impression_id,
-            currency=body.currency,
-            check_in=body.check_in,
-            check_out=body.check_out,
+            room_id=str(room_id),
+            check_in=date.fromisoformat(body.check_in),
+            check_out=date.fromisoformat(body.check_out),
             adults=body.adults,
+            currency=body.currency,
+            language="en",
+            impresion_id=price_input.get("impression_id"),
+            api_key=price_input.get("api_key"),
+            cookies=cookies,
             proxy_url="",
         )
 
