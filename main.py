@@ -1,63 +1,80 @@
-from fastapi import FastAPI, HTTPException, Header
-from pydantic import BaseModel
-from typing import Optional
 from datetime import date
-import os
-import re
+from typing import Optional
+
 import pyairbnb
+from fastapi import FastAPI, Header, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+
 
 app = FastAPI()
 
-TOKEN = os.getenv("SERVICE_TOKEN")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+SERVICE_TOKEN = ""  # optional: put your token here if you use one
+
+
+class DetailsReq(BaseModel):
+    url: str
+    check_in: Optional[str] = ""
+    check_out: Optional[str] = ""
+    adults: Optional[int] = 1
+    currency: Optional[str] = "USD"
 
 
 class PriceReq(BaseModel):
-    url: Optional[str] = None
     room_id: Optional[str] = None
+    url: Optional[str] = None
     check_in: str
     check_out: str
-    adults: int = 1
-    currency: str = "USD"
+    adults: Optional[int] = 1
+    currency: Optional[str] = "USD"
 
 
 def auth(authorization: Optional[str]):
-    if TOKEN and authorization != f"Bearer {TOKEN}":
-        raise HTTPException(status_code=401, detail="unauthorized")
+    if SERVICE_TOKEN:
+        expected = f"Bearer {SERVICE_TOKEN}"
+        if authorization != expected:
+            raise HTTPException(status_code=401, detail="Unauthorized")
 
 
-def extract_id(url: Optional[str]):
-    match = re.search(r"/rooms/(\d+)", url or "")
+def extract_id(url: Optional[str]) -> Optional[str]:
+    if not url:
+        return None
+
+    import re
+
+    match = re.search(r"/rooms/(?:plus/)?(\d+)", url)
     return match.group(1) if match else None
 
 
-@app.get("/health")
-def health():
-    return {"ok": True}
+@app.get("/")
+def root():
+    return {"ok": True, "service": "pyairbnb"}
 
 
 @app.post("/details")
-def details(body: PriceReq, authorization: Optional[str] = Header(None)):
+def details(body: DetailsReq, authorization: Optional[str] = Header(None)):
     auth(authorization)
 
-    room_id = body.room_id or extract_id(body.url)
-
-    if not room_id:
-        return {"ok": False, "error": "room_id or valid url required"}
-
     try:
-        room_url = f"https://www.airbnb.com/rooms/{room_id}"
+        room_id = extract_id(body.url)
+        if not room_id:
+            raise Exception("Could not extract room_id from URL")
 
-        details_data, price_input, cookies = pyairbnb.get_metadata_from_url(
-            room_url,
-            "en",
-            "",
+        result = pyairbnb.get_details(
+            room_id=str(room_id),
+            currency=body.currency or "USD",
         )
 
-        return {
-            "ok": True,
-            "data": details_data,
-            "price_input": price_input,
-        }
+        return {"ok": True, "data": result}
 
     except Exception as e:
         return {"ok": False, "error": str(e)}
@@ -67,54 +84,24 @@ def details(body: PriceReq, authorization: Optional[str] = Header(None)):
 def price(body: PriceReq, authorization: Optional[str] = Header(None)):
     auth(authorization)
 
-    room_id = body.room_id or extract_id(body.url)
-
-    if not room_id:
-        return {"ok": False, "error": "room_id or valid url required"}
-
     try:
-        room_url = f"https://www.airbnb.com/rooms/{room_id}"
+        room_id = body.room_id or extract_id(body.url)
+        if not room_id:
+            raise Exception("room_id or valid Airbnb url is required")
 
-        data, price_input, cookies = pyairbnb.get_metadata_from_url(
-            room_url,
-            "en",
-            "",
-        )
-
-        price_data = pyairbnb.get_price(
-            str(room_id),
+        result = pyairbnb.get_price(
+            room_id=str(room_id),
             check_in=date.fromisoformat(body.check_in),
             check_out=date.fromisoformat(body.check_out),
-            adults=body.adults,
-            currency=body.currency,
-            api_key=price_input.get("api_key"),
-            cookies=cookies,
-            impresion_id=price_input.get("impression_id"),
+            adults=int(body.adults or 1),
+            currency=body.currency or "USD",
+            api_key=None,
+            cookies=None,
+            impression_id=None,
             proxy_url="",
         )
 
-        return {
-            "ok": True,
-            "data": price_data,
-            "debug": {
-                "room_id": str(room_id),
-                "price_input_keys": list(price_input.keys()),
-                "has_api_key": bool(price_input.get("api_key")),
-                "has_product_id": bool(price_input.get("product_id")),
-                "has_impression_id": bool(price_input.get("impression_id")),
-            },
-        }
+        return {"ok": True, "data": result}
 
     except Exception as e:
-        return {
-            "ok": False,
-            "error": str(e),
-            "error_type": type(e).__name__,
-            "debug": {
-                "room_id": str(room_id),
-                "check_in": body.check_in,
-                "check_out": body.check_out,
-                "adults": body.adults,
-                "currency": body.currency,
-            },
-        }
+        return {"ok": False, "error": str(e)}
